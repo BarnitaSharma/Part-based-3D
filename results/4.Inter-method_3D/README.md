@@ -13,10 +13,9 @@ and **geometric accuracy** with respect to a synthetic CAD reference model.
 
 This directory uses the following precomputed data for inter-method evaluation:
 
-- **Segmented sparse and dense point clouds**<sup>[1,2,3,4]</sup>  
-  *(semantic labels obtained using SfM-guided SAM)*
+- **Sparse and dense point clouds**<sup>[1,2,3]</sup>  
 
-- **Synthetic CAD reference model**<sup>[5]</sup>
+- **Synthetic CAD reference model**<sup>[4]</sup>
 
 - **Semantic voxel grid produced by the proposed pipeline**
 
@@ -62,13 +61,7 @@ Schönberger, J. L., Zheng, E., Pollefeys, M., and Frahm, J.-M.
 *Pixelwise View Selection for Unstructured Multi-View Stereo*, ECCV 2016  
 https://github.com/colmap/colmap
 
-[3] **SfM-guided SAM**  
-Sharma, B., and Jana, S.  
-*Semantic Part Segmentation of Heritage Monuments from Crowdsourced Images:  
-Consistent Labeling using SfM-guided SAM*  
-National Conference on Communications (NCC), 2025
-
-[4] **Synthetic CAD reference model**  
+[3] **Synthetic CAD reference model**  
 *Free3D Contributors*. *Taj Mahal 3D Model*.  
 https://free3d.com/3d-model/taj-mahal-82618.html  
 

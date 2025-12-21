@@ -243,6 +243,60 @@ def compute_surface_metrics(vertices, faces, k=20):
         "Mean Curvature": np.mean(mean_curvatures),
     }
 
+### F1 curve ###
+
+def compute_nn_distances(A, B, max_points=50000, seed=0):
+    """
+    Downsample + compute nearest-neighbor distances A->B and B->A.
+    Returns (d_AB, d_BA).
+    """
+    rng = np.random.default_rng(seed)
+
+    if len(A) > max_points:
+        A = A[rng.choice(len(A), max_points, replace=False)]
+    if len(B) > max_points:
+        B = B[rng.choice(len(B), max_points, replace=False)]
+
+    nn_AB = NearestNeighbors(n_neighbors=1, n_jobs=-1).fit(B)
+    d_AB, _ = nn_AB.kneighbors(A)
+
+    nn_BA = NearestNeighbors(n_neighbors=1, n_jobs=-1).fit(A)
+    d_BA, _ = nn_BA.kneighbors(B)
+
+    return d_AB[:, 0], d_BA[:, 0]
+
+def f1_curve_from_distances(d_AB, d_BA, thresholds):
+    """
+    Compute precision, recall, and F1 for a sweep of thresholds.
+    """
+    precs, recs, f1s = [], [], []
+
+    for t in thresholds:
+        prec = float(np.mean(d_AB < t))
+        rec  = float(np.mean(d_BA < t))
+        f1   = 0.0 if (prec + rec) == 0 else (2 * prec * rec) / (prec + rec)
+
+        precs.append(prec)
+        recs.append(rec)
+        f1s.append(f1)
+
+    return (
+        np.asarray(recs),
+        np.asarray(precs),
+        np.asarray(f1s),
+    )
+
+def compute_f1_curve(A, B, thresholds, max_points=50000, seed=0):
+    """
+    End-to-end F1(τ) curve between two point clouds.
+    """
+    d_AB, d_BA = compute_nn_distances(
+        A, B, max_points=max_points, seed=seed
+    )
+    return f1_curve_from_distances(d_AB, d_BA, thresholds)
+
+
+
 __all__ = [
     "filter_mesh",
     "chamfer_distance",
@@ -252,4 +306,6 @@ __all__ = [
     "compute_nn_stats",
     "get_marching_cubes_mesh",
     "compute_surface_metrics",
+    "compute_nn_distances",
+    "compute_f1_curve"
 ]

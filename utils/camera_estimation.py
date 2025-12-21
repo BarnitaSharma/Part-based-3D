@@ -210,37 +210,117 @@ def extract_minaret_voxels_by_label(voxel_grid, minaret_colors):
     }
 
 
-def extract_minaret_masks_by_label(image, minaret_colors):
-    image_rgb = image[:, :, :3]
-    masks = {}
+# def extract_minaret_masks_by_label(image, minaret_colors):
+#     image_rgb = image[:, :, :3]
+#     masks = {}
 
-    def regions(color):
+#     def regions(color):
+#         mask = np.all(image_rgb == color, axis=-1).astype(np.uint8)
+#         labeled = label2d(mask)
+#         return sorted(regionprops(labeled), key=lambda r: r.centroid[1])
+
+#     front = regions(minaret_colors[0])
+#     back  = regions(minaret_colors[1])
+
+#     if len(front) != 2:
+#         raise ValueError("Expected 2 front minarets")
+
+#     masks["LM1"] = (label2d(np.all(image_rgb == minaret_colors[0], axis=-1)) == front[0].label)
+#     masks["RM1"] = (label2d(np.all(image_rgb == minaret_colors[0], axis=-1)) == front[1].label)
+
+#     if len(back) == 2:
+#         masks["LM2"] = (label2d(np.all(image_rgb == minaret_colors[1], axis=-1)) == back[0].label)
+#         masks["RM2"] = (label2d(np.all(image_rgb == minaret_colors[1], axis=-1)) == back[1].label)
+#     elif len(back) == 1:
+#         c = back[0].centroid[1]
+#         f0, f1 = front[0].centroid[1], front[1].centroid[1]
+#         key = "LM2" if abs(c - f0) < abs(c - f1) else "RM2"
+#         masks[key] = (label2d(np.all(image_rgb == minaret_colors[1], axis=-1)) == back[0].label)
+#     else:
+#         raise ValueError("Unexpected number of back minarets")
+
+#     return masks
+
+from skimage.measure import label as label2d, regionprops
+import numpy as np
+
+def extract_minaret_masks_by_label(image, minaret_colors, min_area=50):
+    """
+    Flexible minaret mask extractor.
+
+    Rules:
+    - Accepts 2–4 total minarets
+    - Colors indicate front/back preference, not hard truth
+    - Never fails on count alone
+    - Assigns LM/RM by X centroid
+    - Assigns front/back by color priority, then Y depth
+    """
+
+    image_rgb = image[:, :, :3]
+    regions_all = []
+
+    # --- 1. Extract connected components for all minaret colors ---
+    for color_idx, color in enumerate(minaret_colors):
         mask = np.all(image_rgb == color, axis=-1).astype(np.uint8)
         labeled = label2d(mask)
-        return sorted(regionprops(labeled), key=lambda r: r.centroid[1])
 
-    front = regions(minaret_colors[0])
-    back  = regions(minaret_colors[1])
+        for r in regionprops(labeled):
+            if r.area < min_area:
+                continue
+            regions_all.append({
+                "color_idx": color_idx,   # lower = more front-preferred
+                "centroid": r.centroid,  # (y, x)
+                "area": r.area,
+                "label": r.label,
+                "color": color
+            })
 
-    if len(front) != 2:
-        raise ValueError("Expected 2 front minarets")
+    if len(regions_all) < 2:
+        raise ValueError("Not enough minarets for camera alignment")
 
-    masks["LM1"] = (label2d(np.all(image_rgb == minaret_colors[0], axis=-1)) == front[0].label)
-    masks["RM1"] = (label2d(np.all(image_rgb == minaret_colors[0], axis=-1)) == front[1].label)
+    # --- 2. Sort left → right by X centroid ---
+    regions_all.sort(key=lambda r: r["centroid"][1])
 
-    if len(back) == 2:
-        masks["LM2"] = (label2d(np.all(image_rgb == minaret_colors[1], axis=-1)) == back[0].label)
-        masks["RM2"] = (label2d(np.all(image_rgb == minaret_colors[1], axis=-1)) == back[1].label)
-    elif len(back) == 1:
-        c = back[0].centroid[1]
-        f0, f1 = front[0].centroid[1], front[1].centroid[1]
-        key = "LM2" if abs(c - f0) < abs(c - f1) else "RM2"
-        masks[key] = (label2d(np.all(image_rgb == minaret_colors[1], axis=-1)) == back[0].label)
-    else:
-        raise ValueError("Unexpected number of back minarets")
+    # --- 3. Split into left / right groups ---
+    mid = len(regions_all) // 2
+    left_regions  = regions_all[:mid]
+    right_regions = regions_all[mid:]
 
-    return masks
+    def pick_front_back(regions):
+        """
+        Pick front/back from a side.
+        Preference order:
+        1. color index (front color first)
+        2. smaller Y (visually closer / lower in image)
+        """
+        if len(regions) == 1:
+            return regions[0], None
 
+        regions = sorted(
+            regions,
+            key=lambda r: (r["color_idx"], r["centroid"][0])
+        )
+        return regions[0], regions[1]
+
+    LM1_r, LM2_r = pick_front_back(left_regions)
+    RM1_r, RM2_r = pick_front_back(right_regions)
+
+    # --- 4. Build binary masks ---
+    def region_to_mask(region):
+        mask = np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+        mask[
+            label2d(np.all(image_rgb == region["color"], axis=-1))
+            == region["label"]
+        ] = 1
+        return mask
+
+    out = {}
+    if LM1_r: out["LM1"] = region_to_mask(LM1_r)
+    if RM1_r: out["RM1"] = region_to_mask(RM1_r)
+    if LM2_r: out["LM2"] = region_to_mask(LM2_r)
+    if RM2_r: out["RM2"] = region_to_mask(RM2_r)
+
+    return out
 
 # ============================================================
 # Keypoints
